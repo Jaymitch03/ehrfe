@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String
+  code       String    @unique
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  facilities Facility[]
+  users      User[]
+  patients   Patient[]
+}
+
+model Facility {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  name           String
+  code           String
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patients       Patient[]
+  appointments   Appointment[]
+
+  @@unique([organizationId, code])
+}
+
+model User {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  firstName      String
+  lastName       String
+  email          String
+  jobTitle       String?
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appointments   Appointment[]
+  notes          Note[]
+
+  @@unique([organizationId, email])
+}
+
+model Patient {
+  id                  String         @id @default(uuid()) @db.Uuid
+  organizationId      String         @db.Uuid
+  facilityId          String?        @db.Uuid
+  medicalRecordNumber String
+  firstName           String
+  lastName            String
+  dateOfBirth         DateTime?
+  status              String         @default("active")
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  organization        Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility            Facility?      @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+  appointments        Appointment[]
+  notes               Note[]
+
+  @@unique([organizationId, medicalRecordNumber])
+}
+
+model Appointment {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  facilityId      String?   @db.Uuid
+  patientId       String    @db.Uuid
+  clinicianId     String?   @db.Uuid
+  scheduledStart  DateTime
+  scheduledEnd    DateTime
+  status          String    @default("scheduled")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility        Facility? @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinician       User?     @relation(fields: [clinicianId], references: [id], onDelete: SetNull)
+}
+
+model Note {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  patientId      String    @db.Uuid
+  authorUserId   String?   @db.Uuid
+  noteType       String
+  title          String
+  status         String    @default("draft")
+  contentJson    Json
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  author         User?     @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+}

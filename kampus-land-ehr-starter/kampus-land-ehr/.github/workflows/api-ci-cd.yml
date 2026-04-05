@@ -1,0 +1,70 @@
+name: API CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - '.github/workflows/api-ci-cd.yml'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm --filter api prisma:generate
+
+      - name: Lint api
+        run: pnpm --filter api lint
+
+      - name: Build api
+        run: pnpm --filter api build
+
+      - name: Package api artifact
+        run: |
+          mkdir -p api-release/dist
+          cp -R apps/api/dist/* api-release/dist/
+          cp apps/api/package.json api-release/package.json
+          cp -R apps/api/prisma api-release/prisma
+          cp -R node_modules api-release/node_modules
+          cd api-release && zip -r ../api-release.zip .
+
+      - name: Deploy api to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME_API }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_API }}
+          package: api-release.zip
+
+      - name: Run Prisma migrate deploy
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az webapp config appsettings set \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --name ${{ secrets.AZURE_WEBAPP_NAME_API }} \
+              --settings DATABASE_URL='${{ secrets.DATABASE_URL }}'

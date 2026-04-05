@@ -1,0 +1,60 @@
+name: Web CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/web-ci-cd.yml'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Lint web
+        run: pnpm --filter web lint
+
+      - name: Build web
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+        run: pnpm --filter web build
+
+      - name: Prepare web artifact
+        run: |
+          mkdir -p web-artifact
+          cp -R apps/web/.next/standalone/* web-artifact/
+          mkdir -p web-artifact/apps/web/.next
+          cp -R apps/web/.next/static web-artifact/apps/web/.next/static
+          if [ -d apps/web/public ]; then cp -R apps/web/public web-artifact/apps/web/public; fi
+
+      - name: Zip web artifact
+        run: cd web-artifact && zip -r ../web-release.zip .
+
+      - name: Deploy web to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME_WEB }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_WEB }}
+          package: web-release.zip
